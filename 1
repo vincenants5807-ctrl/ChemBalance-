@@ -1,0 +1,376 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ChemBalance - 化学方程式配平与可视化</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;}
+body{font-family:'Segoe UI',sans-serif;background:linear-gradient(160deg,#0f172a,#1a1a2e);min-height:100vh;color:#e2e8f0;}
+.app{max-width:900px;margin:0 auto;padding:30px 20px;}
+.header{text-align:center;margin-bottom:30px;}
+.header h1{font-size:26px;color:#34d399;margin-bottom:4px;}
+.header p{font-size:12px;opacity:.4;}
+
+.input-section{background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.06);border-radius:14px;padding:24px;margin-bottom:20px;}
+.input-row{display:flex;gap:10px;align-items:center;margin-bottom:12px;}
+.input-row input{flex:1;padding:14px 16px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:10px;color:#e2e8f0;font-size:16px;font-family:'Fira Code',monospace;}
+.input-row input:focus{outline:none;border-color:#34d399;}
+.balance-btn{padding:14px 28px;background:linear-gradient(135deg,#34d399,#06b6d4);border:none;border-radius:10px;color:#0f172a;font-weight:700;font-size:14px;cursor:pointer;transition:.2s;}
+.balance-btn:hover{transform:scale(1.02);box-shadow:0 4px 15px rgba(52,211,153,.3);}
+.examples{display:flex;gap:6px;flex-wrap:wrap;}
+.example-btn{padding:6px 12px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:6px;font-size:11px;cursor:pointer;font-family:'Fira Code',monospace;transition:.2s;}
+.example-btn:hover{border-color:#34d399;color:#34d399;}
+
+.result-section{display:none;margin-bottom:20px;}
+.result-section.show{display:block;}
+.result-card{background:rgba(52,211,153,.05);border:1px solid rgba(52,211,153,.2);border-radius:14px;padding:24px;text-align:center;margin-bottom:16px;}
+.result-equation{font-size:24px;font-family:'Fira Code',monospace;color:#34d399;margin:10px 0;line-height:1.6;}
+.result-equation .coeff{color:#fbbf24;font-weight:bold;}
+.result-equation .arrow{margin:0 10px;color:rgba(255,255,255,.4);}
+
+.details-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px;}
+.detail-card{padding:16px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.06);border-radius:12px;}
+.detail-card h3{font-size:12px;color:#34d399;margin-bottom:10px;text-transform:uppercase;letter-spacing:.5px;}
+.element-row{display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid rgba(255,255,255,.04);font-size:13px;}
+.element-row .el-sym{font-weight:bold;color:#fbbf24;font-family:'Fira Code',monospace;}
+.element-row .el-count{font-family:'Fira Code',monospace;color:#34d399;}
+.check-mark{color:#22c55e;font-size:13px;}
+
+.molecule-vis{padding:20px;background:rgba(255,255,255,.02);border:1px solid rgba(255,255,255,.06);border-radius:14px;margin-bottom:16px;}
+.molecule-vis h3{font-size:12px;color:#34d399;margin-bottom:12px;}
+canvas#molCanvas{width:100%;height:200px;border-radius:8px;}
+
+.reaction-types{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px;margin-top:16px;}
+.rt-card{padding:12px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.06);border-radius:10px;cursor:pointer;transition:.2s;text-align:center;}
+.rt-card:hover{border-color:#34d399;transform:translateY(-2px);}
+.rt-card .rt-name{font-size:12px;font-weight:600;margin-bottom:4px;}
+.rt-card .rt-eq{font-size:10px;opacity:.5;font-family:'Fira Code',monospace;}
+
+.molar-section{margin-top:16px;padding:16px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.06);border-radius:12px;}
+.molar-section h3{font-size:12px;color:#34d399;margin-bottom:10px;}
+.molar-grid{display:flex;flex-wrap:wrap;gap:8px;}
+.molar-item{padding:8px 14px;background:rgba(52,211,153,.05);border:1px solid rgba(52,211,153,.15);border-radius:8px;font-size:12px;}
+.molar-item .mi-formula{font-weight:bold;color:#fbbf24;font-family:'Fira Code',monospace;}
+.molar-item .mi-mass{color:#34d399;margin-left:6px;}
+
+.error-msg{padding:14px;background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.3);border-radius:10px;color:#ef4444;font-size:13px;margin-bottom:16px;display:none;}
+.error-msg.show{display:block;}
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="header">
+    <h1>⚗️ ChemBalance</h1>
+    <p>输入化学方程式，自动配平并可视化</p>
+  </div>
+
+  <div class="input-section">
+    <div class="input-row">
+      <input id="eqInput" placeholder="例: Fe + O2 = Fe2O3" value="Fe + O2 = Fe2O3" onkeydown="if(event.key==='Enter')balance()">
+      <button class="balance-btn" onclick="balance()">⚖️ 配平</button>
+    </div>
+    <div class="examples">
+      <span style="font-size:11px;opacity:.4;margin-right:4px;">示例:</span>
+      <div class="example-btn" onclick="setEq('H2 + O2 = H2O')">H₂+O₂=H₂O</div>
+      <div class="example-btn" onclick="setEq('CH4 + O2 = CO2 + H2O')">CH₄燃烧</div>
+      <div class="example-btn" onclick="setEq('Fe2O3 + CO = Fe + CO2')">氧化铁还原</div>
+      <div class="example-btn" onclick="setEq('KMnO4 + HCl = KCl + MnCl2 + Cl2 + H2O')">高锰酸钾</div>
+      <div class="example-btn" onclick="setEq('C2H5OH + O2 = CO2 + H2O')">乙醇燃烧</div>
+      <div class="example-btn" onclick="setEq('Al + Fe2O3 = Al2O3 + Fe')">铝热反应</div>
+      <div class="example-btn" onclick="setEq('Na + H2O = NaOH + H2')">钠与水</div>
+      <div class="example-btn" onclick="setEq('N2 + H2 = NH3')">合成氨</div>
+    </div>
+  </div>
+
+  <div class="error-msg" id="errorMsg"></div>
+
+  <div class="result-section" id="resultSection">
+    <div class="result-card">
+      <div style="font-size:11px;opacity:.4;margin-bottom:6px;">配平结果</div>
+      <div class="result-equation" id="resultEq"></div>
+    </div>
+    <div class="details-grid">
+      <div class="detail-card">
+        <h3>📊 原子守恒验证</h3>
+        <div id="atomCheck"></div>
+      </div>
+      <div class="detail-card">
+        <h3>📋 反应信息</h3>
+        <div id="reactionInfo"></div>
+      </div>
+    </div>
+    <div class="molar-section">
+      <h3>⚖️ 摩尔质量</h3>
+      <div class="molar-grid" id="molarGrid"></div>
+    </div>
+    <div class="molecule-vis">
+      <h3>🔬 分子模型可视化</h3>
+      <canvas id="molCanvas" height="200"></canvas>
+    </div>
+  </div>
+
+  <div class="reaction-types">
+    <div class="rt-card" onclick="setEq('2H2 + O2 = 2H2O')"><div class="rt-name">🔥 化合反应</div><div class="rt-eq">A + B → AB</div></div>
+    <div class="rt-card" onclick="setEq('2KClO3 = 2KCl + 3O2')"><div class="rt-name">💥 分解反应</div><div class="rt-eq">AB → A + B</div></div>
+    <div class="rt-card" onclick="setEq('Fe + CuSO4 = FeSO4 + Cu')"><div class="rt-name">🔄 置换反应</div><div class="rt-eq">A + BC → AC + B</div></div>
+    <div class="rt-card" onclick="setEq('NaOH + HCl = NaCl + H2O')"><div class="rt-name">⚡ 复分解反应</div><div class="rt-eq">AB + CD → AD + CB</div></div>
+    <div class="rt-card" onclick="setEq('C3H8 + O2 = CO2 + H2O')"><div class="rt-name">🔥 有机燃烧</div><div class="rt-eq">CₓHᵧ + O₂ →</div></div>
+    <div class="rt-card" onclick="setEq('Fe + O2 = Fe3O4')"><div class="rt-name">✨ 铁丝燃烧</div><div class="rt-eq">Fe + O₂ → Fe₃O₄</div></div>
+  </div>
+</div>
+
+<script>
+// ====== 元素原子量 ======
+const ATOMIC_MASS = {H:1.008,He:4.003,Li:6.941,Be:9.012,B:10.81,C:12.01,N:14.01,O:16.00,F:19.00,Ne:20.18,Na:22.99,Mg:24.31,Al:26.98,Si:28.09,P:30.97,S:32.07,Cl:35.45,Ar:39.95,K:39.10,Ca:40.08,Ti:47.87,V:50.94,Cr:52.00,Mn:54.94,Fe:55.85,Co:58.93,Ni:58.69,Cu:63.55,Zn:65.38,Br:79.90,Ag:107.87,I:126.90,Ba:137.33,Pb:207.2};
+const ELEMENT_COLORS = {H:'#ffffff',C:'#404040',N:'#3050F8',O:'#FF0D0D',S:'#FFFF30',Cl:'#1FF01F',Na:'#AB5CF2',Fe:'#E06633',Cu:'#C88033',K:'#8F40D4',Ca:'#3DFF00',Mg:'#8AFF00',Al:'#BFA6A6',Mn:'#9C7AC7',P:'#FF8000',Br:'#A62929'};
+
+// ====== 解析化学式 ======
+function parseFormula(formula){
+    const elements = {};
+    const regex = /([A-Z][a-z]?)(\d*)/g;
+    let match;
+    // 处理括号 (简化版不处理嵌套括号)
+    let expanded = formula.replace(/\(([^)]+)\)(\d+)/g, (_, group, num)=>{
+        return group.repeat(parseInt(num));
+    });
+    while((match=regex.exec(expanded))!==null){
+        if(match[1]){
+            const el = match[1];
+            const count = match[2] ? parseInt(match[2]) : 1;
+            elements[el] = (elements[el]||0) + count;
+        }
+    }
+    return elements;
+}
+
+// ====== 解析方程式 ======
+function parseEquation(eq){
+    eq = eq.replace(/→|->|＝/g, '=');
+    const sides = eq.split('=');
+    if(sides.length!==2) throw new Error('方程式格式错误，需要用 = 分隔');
+    const parseSide = (side)=>{
+        return side.split('+').map(s=>s.trim()).filter(s=>s).map(term=>{
+            const m = term.match(/^(\d*)(.+)$/);
+            const coeff = m[1] ? parseInt(m[1]) : 1;
+            const formula = m[2].trim();
+            return { formula, coeff, elements: parseFormula(formula) };
+        });
+    };
+    return { reactants: parseSide(sides[0]), products: parseSide(sides[1]) };
+}
+
+// ====== 配平算法（高斯消元法）======
+function balanceEquation(eq){
+    const parsed = parseEquation(eq);
+    const allCompounds = [...parsed.reactants, ...parsed.products];
+    const n = allCompounds.length;
+    
+    // 收集所有元素
+    const elements = new Set();
+    allCompounds.forEach(c=>Object.keys(c.elements).forEach(e=>elements.add(e)));
+    const elArr = [...elements];
+    const m = elArr.length;
+    
+    // 构建矩阵 [m x n]
+    const matrix = [];
+    for(let i=0;i<m;i++){
+        const row = [];
+        for(let j=0;j<n;j++){
+            let val = allCompounds[j].elements[elArr[i]] || 0;
+            if(j >= parsed.reactants.length) val = -val; // 生成物取负
+            row.push(val);
+        }
+        matrix.push(row);
+    }
+    
+    // 高斯消元
+    const rows=m, cols=n;
+    let pivotRow=0;
+    for(let col=0;col<cols-1&&pivotRow<rows;col++){
+        let maxRow=pivotRow;
+        for(let r=pivotRow+1;r<rows;r++){
+            if(Math.abs(matrix[r][col])>Math.abs(matrix[maxRow][col])) maxRow=r;
+        }
+        if(Math.abs(matrix[maxRow][col])<1e-10) continue;
+        [matrix[pivotRow],matrix[maxRow]]=[matrix[maxRow],matrix[pivotRow]];
+        for(let r=0;r<rows;r++){
+            if(r===pivotRow) continue;
+            const factor=matrix[r][col]/matrix[pivotRow][col];
+            for(let c=col;c<cols;c++) matrix[r][c]-=factor*matrix[pivotRow][c];
+        }
+        pivotRow++;
+    }
+    
+    // 回代求解（设最后一个变量=1，求比例）
+    const solution = new Array(n).fill(0);
+    solution[n-1] = 1;
+    for(let i=Math.min(pivotRow,rows)-1;i>=0;i--){
+        let pivotCol=-1;
+        for(let c=0;c<cols;c++){
+            if(Math.abs(matrix[i][c])>1e-10){ pivotCol=c; break; }
+        }
+        if(pivotCol===-1||pivotCol===n-1) continue;
+        let sum=0;
+        for(let c=pivotCol+1;c<cols;c++) sum += matrix[i][c]*solution[c];
+        solution[pivotCol] = -sum / matrix[i][pivotCol];
+    }
+    
+    // 转为最小整数
+    const absSol = solution.map(Math.abs);
+    // 找最小非零
+    const nonZero = absSol.filter(v=>v>1e-10);
+    if(nonZero.length===0) throw new Error('无法配平此方程');
+    const minVal = Math.min(...nonZero);
+    let ratios = absSol.map(v=>v/minVal);
+    
+    // 尝试乘以倍数得到整数
+    let multiplier=1;
+    for(let mul=1;mul<=100;mul++){
+        const test = ratios.map(r=>r*mul);
+        if(test.every(v=>Math.abs(v-Math.round(v))<0.01)){
+            multiplier=mul;
+            break;
+        }
+    }
+    const coeffs = ratios.map(r=>Math.round(r*multiplier));
+    
+    // 验证
+    if(coeffs.some(c=>c<=0||c>999)) throw new Error('配平失败');
+    
+    return {
+        reactants: parsed.reactants.map((c,i)=>({...c, coeff:coeffs[i]})),
+        products: parsed.products.map((c,i)=>({...c, coeff:coeffs[i+parsed.reactants.length]})),
+        elements: elArr
+    };
+}
+
+// ====== 配平主函数 ======
+function balance(){
+    const eq = document.getElementById('eqInput').value.trim();
+    const errEl = document.getElementById('errorMsg');
+    const resEl = document.getElementById('resultSection');
+    errEl.classList.remove('show');
+    resEl.classList.remove('show');
+    
+    try{
+        const result = balanceEquation(eq);
+        displayResult(result);
+        resEl.classList.add('show');
+    } catch(e){
+        errEl.textContent = '❌ '+e.message;
+        errEl.classList.add('show');
+    }
+}
+
+function displayResult(result){
+    // 配平后方程式
+    const reactStr = result.reactants.map(c=>`<span class="coeff">${c.coeff>1?c.coeff:''}</span>${formatFormula(c.formula)}`).join(' + ');
+    const prodStr = result.products.map(c=>`<span class="coeff">${c.coeff>1?c.coeff:''}</span>${formatFormula(c.formula)}`).join(' + ');
+    document.getElementById('resultEq').innerHTML = reactStr + '<span class="arrow"> → </span>' + prodStr;
+    
+    // 原子守恒
+    let checkHtml = '';
+    const allEls = new Set();
+    [...result.reactants,...result.products].forEach(c=>Object.keys(c.elements).forEach(e=>allEls.add(e)));
+    allEls.forEach(el=>{
+        const left = result.reactants.reduce((s,c)=>s+(c.elements[el]||0)*c.coeff, 0);
+        const right = result.products.reduce((s,c)=>s+(c.elements[el]||0)*c.coeff, 0);
+        checkHtml += `<div class="element-row">
+            <span class="el-sym">${el}</span>
+            <span class="el-count">左:${left} = 右:${right} ${left===right?'<span class="check-mark">✓</span>':'❌'}</span>
+        </div>`;
+    });
+    document.getElementById('atomCheck').innerHTML = checkHtml;
+    
+    // 反应信息
+    const totalReactants = result.reactants.length;
+    const totalProducts = result.products.length;
+    let type = '未分类';
+    if(totalReactants>=2 && totalProducts===1) type='化合反应';
+    else if(totalReactants===1 && totalProducts>=2) type='分解反应';
+    else if(totalReactants===2 && totalProducts===2) type='复分解/置换反应';
+    document.getElementById('reactionInfo').innerHTML = `
+        <div class="element-row"><span class="el-sym">反应类型</span><span>${type}</span></div>
+        <div class="element-row"><span class="el-sym">反应物数</span><span>${totalReactants}</span></div>
+        <div class="element-row"><span class="el-sym">生成物数</span><span>${totalProducts}</span></div>
+        <div class="element-row"><span class="el-sym">元素种类</span><span>${allEls.size}</span></div>
+    `;
+    
+    // 摩尔质量
+    const allCompounds = [...result.reactants,...result.products];
+    document.getElementById('molarGrid').innerHTML = allCompounds.map(c=>{
+        const mass = Object.entries(c.elements).reduce((s,[el,n])=>s+(ATOMIC_MASS[el]||0)*n, 0);
+        return `<div class="molar-item"><span class="mi-formula">${c.formula}</span><span class="mi-mass">${mass.toFixed(2)} g/mol</span></div>`;
+    }).join('');
+    
+    // 分子可视化
+    drawMolecules(allCompounds);
+}
+
+function formatFormula(f){
+    return f.replace(/(\d+)/g, '<sub>$1</sub>');
+}
+
+function drawMolecules(compounds){
+    const canvas = document.getElementById('molCanvas');
+    const c = canvas.getContext('2d');
+    const dpr = devicePixelRatio||1;
+    canvas.width = canvas.offsetWidth*dpr;
+    canvas.height = 400;
+    c.scale(dpr,dpr);
+    const w=canvas.offsetWidth, h=200;
+    
+    const segW = w / compounds.length;
+    compounds.forEach((comp, idx)=>{
+        const cx = segW*idx + segW/2;
+        const cy = h/2;
+        const els = Object.entries(comp.elements);
+        const total = els.reduce((s,[,n])=>s+n, 0);
+        let angle = 0;
+        const radius = Math.min(segW*0.3, 50);
+        
+        els.forEach(([el, count])=>{
+            for(let i=0;i<Math.min(count,6);i++){
+                const a = angle + (Math.PI*2*i/total);
+                const dist = total===1 ? 0 : radius*0.6;
+                const x = cx + Math.cos(a)*dist;
+                const y = cy + Math.sin(a)*dist;
+                const r = Math.min(18, 12+count*2);
+                
+                // 连线
+                if(total>1){
+                    c.strokeStyle='rgba(255,255,255,.15)'; c.lineWidth=2;
+                    c.beginPath(); c.moveTo(cx,cy); c.lineTo(x,y); c.stroke();
+                }
+                
+                // 原子
+                c.fillStyle = ELEMENT_COLORS[el]||'#888';
+                c.beginPath(); c.arc(x,y,r,0,Math.PI*2); c.fill();
+                c.fillStyle='rgba(0,0,0,.6)'; c.beginPath(); c.arc(x,y,r,0,Math.PI*2); c.fill();
+                c.fillStyle = ELEMENT_COLORS[el]||'#888';
+                c.beginPath(); c.arc(x,y,r-2,0,Math.PI*2); c.fill();
+                
+                // 标签
+                c.fillStyle='#fff'; c.font='bold 10px sans-serif'; c.textAlign='center'; c.textBaseline='middle';
+                c.fillText(el, x, y);
+                angle += Math.PI*2/total;
+            }
+        });
+        
+        // 化学式标签
+        c.fillStyle='rgba(255,255,255,.5)'; c.font='12px Fira Code,monospace'; c.textAlign='center';
+        c.fillText(comp.formula, cx, h-15);
+    });
+}
+
+function setEq(eq){
+    document.getElementById('eqInput').value = eq;
+    balance();
+}
+
+// 初始化
+balance();
+</script>
+</body>
+</html>
